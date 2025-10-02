@@ -5,12 +5,29 @@ import mockData from "../../../public/mock-data.json";
 
 const mockFilePath = path.join(process.cwd(), "public", "mock-data.json");
 
+type Category = {
+  category: string;
+  rating: number;
+};
+
+type HostawayReview = {
+  id: number;
+  listingName: string;
+  guestName: string;
+  rating?: number;
+  reviewCategory?: Category[];
+  publicReview: string;
+  submittedAt: string;
+  status: string;
+  approved?: boolean;
+};
+
 type Review = {
   id: number;
   property: string;
   reviewer: string;
   rating: number | null;
-  categories: { category: string; rating: number }[];
+  categories: Category[];
   channel: string;
   review: string;
   date: string;
@@ -18,12 +35,15 @@ type Review = {
   approved: boolean;
 };
 
+type HostawayApiResponse = {
+  result: HostawayReview[];
+};
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-
-  let data: any;
+  let data: HostawayApiResponse = { result: [] };
 
   try {
     // get accessToken
@@ -52,14 +72,15 @@ export default async function handler(
     const reviews = await reviewsResponse.json();
     console.log("Reviews fetched:", reviews);
 
-    // api contains no review - use realistic review data
-    data = mockData;
+    // if no reviews, fallback to mock
+    data = mockData as HostawayApiResponse;
   } catch (err) {
     console.error("Error fetching Hostaway API:", err);
+    data = mockData as HostawayApiResponse;
   }
 
   // Normalize reviews
-  const normalized: Review[] = data.result.map((review: any) => ({
+  const normalized: Review[] = data.result.map((review) => ({
     id: review.id,
     property: review.listingName,
     reviewer: review.guestName,
@@ -73,17 +94,20 @@ export default async function handler(
   }));
 
   if (req.method === "GET") {
-    res.status(200).json({ reviews: normalized });
+    return res.status(200).json({ reviews: normalized });
   }
-  
-  // approved update
-  if (req.method === "PATCH") {
-    const { id, approved } = req.body;
-    const reviewIndex = data.result.findIndex((r: any) => r.id === id);
-    data.result[reviewIndex].approved = approved;
 
-    // Save updated result to mock-data.json
-    fs.writeFileSync(mockFilePath, JSON.stringify({ result: data.result }, null, 2));
+  if (req.method === "PATCH") {
+    const { id, approved } = req.body as { id: number; approved: boolean };
+    const reviewIndex = data.result.findIndex((r) => r.id === id);
+    if (reviewIndex !== -1) {
+      data.result[reviewIndex].approved = approved;
+
+      fs.writeFileSync(
+        mockFilePath,
+        JSON.stringify({ result: data.result }, null, 2)
+      );
+    }
 
     return res.status(200).json({ success: true });
   }
